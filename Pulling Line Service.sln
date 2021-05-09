@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.30711.63
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pulling Line Service", "Pulling Line Service\Pulling Line Service.csproj", "{AC60186A-01D8-46AC-A3F9-C9D13D56471C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Interface NJ", "Interface NJ\Interface NJ.csproj", "{EAA5B3E2-E764-43C6-BEC9-FBFB8C485213}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AC60186A-01D8-46AC-A3F9-C9D13D56471C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AC60186A-01D8-46AC-A3F9-C9D13D56471C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AC60186A-01D8-46AC-A3F9-C9D13D56471C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AC60186A-01D8-46AC-A3F9-C9D13D56471C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EAA5B3E2-E764-43C6-BEC9-FBFB8C485213}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EAA5B3E2-E764-43C6-BEC9-FBFB8C485213}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EAA5B3E2-E764-43C6-BEC9-FBFB8C485213}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EAA5B3E2-E764-43C6-BEC9-FBFB8C485213}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {BE506F53-5C19-48FB-8CFD-8BDBBFB3743C}
+	EndGlobalSection
+EndGlobal
