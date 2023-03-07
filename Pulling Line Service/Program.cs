@@ -19,38 +19,20 @@ namespace Pulling_Line_Service
         //  Logging
         private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
-        //  App setting
-        private static string _plcIp1 = Convert.ToString(ConfigurationManager.AppSettings["plc1Ip"]);
-        private static string _plcIp2 = Convert.ToString(ConfigurationManager.AppSettings["plc2Ip"]);
-        private static int _plcTimeout = Convert.ToInt32(ConfigurationManager.AppSettings["plcTimeOut"]);
-        private static PoohFinsETN _Plc1 = new PoohFinsETN();
-        private static PoohFinsETN _Plc2 = new PoohFinsETN();
-
-        //  Local
-        private static int _plcDelayMs = 20;
-
         //  Main function
         static void Main(string[] args)
         {
             //  Log
             log.Info("Program start");
-            Console.WriteLine("Program start");
+            Console.WriteLine(GetDatetimeNowConsole() + "Program start");
 
-            //  ตั้งค่า Interface ระหว่าง Service และ PLC ( **Recheck Net and Node number )
-            PlcSetup(_Plc1, _plcIp1, 1, 1, (byte)Int32.Parse(GetLocalIPAddress().Split('.')[3]), _plcTimeout);
-            PlcSetup(_Plc2, _plcIp2, 1, 1, (byte)Int32.Parse(GetLocalIPAddress().Split('.')[3]), _plcTimeout);
+            //  Broadcast
+            //LineApiMachineDownAllGroup();
 
             //  Main loop
             string[] groupCode = { "G0", "G1", "G2", "G3", "G4", "G5", "G6" };
             while (true)
             {
-                ////  PLC 1 Loop
-                //PlcMainLoop(_Plc1);
-                //System.Threading.Thread.Sleep(_plcDelayMs);
-
-                ////  PLC 2 Loop
-                //PlcMainLoop(_Plc2);
-                //System.Threading.Thread.Sleep(_plcDelayMs);
 
                 //  Check machine down event in each group
                 for (int i = 0; i < groupCode.Length; i++)
@@ -58,6 +40,13 @@ namespace Pulling_Line_Service
 
                 //  Check machine down end job
                 LineApiMachineDownEndJobEachGroup();
+
+                //  Check machine down (NonSelectCase)
+                LineApiSearchMachineDownTimeOverMinute_NonSelectCase();
+
+                //  Check count static
+                for (int i = 0; i < groupCode.Length; i++)
+                    LineApiCountStatic(groupCode[i]);
 
                 //  Delay loop
                 System.Threading.Thread.Sleep(Convert.ToInt32(ConfigurationManager.AppSettings["delayLoop_ms"]));
@@ -116,7 +105,7 @@ namespace Pulling_Line_Service
                                 if (res)
                                     pProcessUpdateMachineDownActiveLineGroup(Convert.ToInt32(dataTable.Rows[i]["Table_StatusMachine_id"]));
                                 //  Print
-                                Console.WriteLine("Sending Line with group " + groupCode + " Table_StatusMachine_id (" + dataTable.Rows[i]["Table_StatusMachine_id"].ToString() + ")");
+                                Console.WriteLine(GetDatetimeNowConsole() + "Sending Line with group " + groupCode + " Table_StatusMachine_id (" + dataTable.Rows[i]["Table_StatusMachine_id"].ToString() + ")");
                             }
                             catch (Exception ex)
                             {
@@ -161,7 +150,7 @@ namespace Pulling_Line_Service
                                     if (res)
                                         pProcessUpdateMachineDownActiveLineGroupEndJob(Convert.ToInt32(dataTable.Rows[i]["Table_StatusMachine_id"]));
                                     //  Print
-                                    Console.WriteLine("Sending Line with group (end job)" + groupCodeList[j] + " Table_StatusMachine_id (" + dataTable.Rows[i]["Table_StatusMachine_id"].ToString() + ")");
+                                    Console.WriteLine(GetDatetimeNowConsole() + "Sending Line with group (end job)" + groupCodeList[j] + " Table_StatusMachine_id (" + dataTable.Rows[i]["Table_StatusMachine_id"].ToString() + ")");
                                 }
                             }
                             catch (Exception ex)
@@ -181,9 +170,96 @@ namespace Pulling_Line_Service
                 log.Error("LineApiMachineDownEachGroup error : " + ex.Message);
             }
         }
+        private static void LineApiSearchMachineDownTimeOverMinute_NonSelectCase()
+        {
+            try
+            {
+                DataTable dataTable = pProcessSearchMachineDownTimeOverMinute_NonSelectCase();
+                if (dataTable != null)
+                {
+                    if (dataTable.Rows.Count > 0)
+                    {
+                        for (int i = 0; i < dataTable.Rows.Count; i++)
+                        {
+                            try
+                            {
+                                //  Extract data from sql
+                                int Table_YieldMonitoring_id = Convert.ToInt32(dataTable.Rows[i]["Table_StatusMachine_id"]);
+                                string message = dataTable.Rows[i]["message"].ToString();
+                                string[] linetokenGroup = dataTable.Rows[i]["line_token"].ToString().Split('|');
 
+                                for (int j = 0; j < linetokenGroup.Length; j++)
+                                {
+                                    //  Sending Line
+                                    bool res = LineNotifyMsg(linetokenGroup[j], message.Replace("$$", "\r\n"));
+                                }
+
+                                //  Update active group
+                                pProcessUpdateMachineDownActiveLineGroupEndJob_NonSelectCase(Convert.ToInt32(dataTable.Rows[i]["Table_StatusMachine_id"]));
+                                //  Print
+                                Console.WriteLine(GetDatetimeNowConsole() + "Sending Line with group (non-select case) Table_StatusMachine_id (" + dataTable.Rows[i]["Table_StatusMachine_id"].ToString() + ")");
+                            }
+                            catch (Exception ex)
+                            {
+                                log.Error("pProcessUpdateMachineDownActiveLineGroupEndJob_NonSelectCase error in loop : " + ex.Message);
+                            }
+                            finally
+                            {
+                                System.Threading.Thread.Sleep(1000);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                log.Error("pProcessSearchMachineDownTimeOverMinute_NonSelectCase error : " + ex.Message);
+            }
+        }
+        private static void LineApiCountStatic(string groupCode)
+        {
+            try
+            {
+                DataTable dataTable = pProcessSearchCountStatistic(groupCode);
+                if (dataTable != null)
+                {
+                    if (dataTable.Rows.Count > 0)
+                    {
+                        for (int i = 0; i < dataTable.Rows.Count; i++)
+                        {
+                            try
+                            {
+                                //  Sending Line
+                                bool res = LineNotifyMsg(dataTable.Rows[i]["line_token"].ToString(), dataTable.Rows[i]["message"].ToString().Replace("$$", "\r\n"));
+                                //  Update active group
+                                if (res)
+                                    pProcessUpdateCountStatistic(groupCode);
+                                //  Print
+                                Console.WriteLine(GetDatetimeNowConsole() + "Sending pProcessSearchCountStatistic " + groupCode + " Table_StatusMachine_id (" + dataTable.Rows[i]["Table_StatusMachine_id"].ToString() + ")");
+                            }
+                            catch (Exception ex)
+                            {
+                                log.Error("LineApiCountStatic error in loop : " + ex.Message);
+                            }
+                            finally
+                            {
+                                System.Threading.Thread.Sleep(1000);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                log.Error("LineApiCountStatic error : " + ex.Message);
+            }
+        }
 
         //  Local Function
+        private static string GetDatetimeNowConsole()
+        {
+            return DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " : ";
+        }
         private static bool ValidateIPv4(string ipString)
         {
             if (String.IsNullOrWhiteSpace(ipString))
@@ -200,18 +276,6 @@ namespace Pulling_Line_Service
             byte tempForParsing;
 
             return splitValues.All(r => byte.TryParse(r, out tempForParsing));
-        }
-        private static string GetLocalIPAddress()
-        {
-            var host = Dns.GetHostEntry(Dns.GetHostName());
-            foreach (var ip in host.AddressList)
-            {
-                if (ip.AddressFamily == AddressFamily.InterNetwork)
-                {
-                    return ip.ToString();
-                }
-            }
-            throw new Exception("No network adapters with an IPv4 address in the system!");
         }
         private static bool LineNotifyMsg(string lineToken, string message)
         {
@@ -233,7 +297,7 @@ namespace Pulling_Line_Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.ToString());
+                Console.WriteLine(GetDatetimeNowConsole() + ex.ToString());
                 log.Error("LineNotifyMsg error : " + ex.Message);
                 return false;
             }
@@ -269,7 +333,7 @@ namespace Pulling_Line_Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.ToString());
+                Console.WriteLine(GetDatetimeNowConsole() + ex.ToString());
             }
         }
 
@@ -396,170 +460,250 @@ namespace Pulling_Line_Service
             }
             return dataTable;
         }
-        private static DataTable pInsert_Table_StatusMachine(string MachineNo, DateTime EventDateTime, string Status, string DownTimeCode, string ProblemCode)
+        private static DataTable pProcessSearchYieldLessThanCriteria()
         {
             DataTable dataTable = new DataTable();
             DataSet ds = new DataSet();
             try
             {
-                if ((EventDateTime == DateTime.MinValue) || (EventDateTime == DateTime.MinValue))
-                    return null;
-
-                //  อ่านค่าจาก Store pInsert_Table_StatusMachine
-                //  pInsert_Table_StatusMachine (@MachineNo varchar(50),@EventDateTime datetime,@Status varchar(20)
-                //  ,@DownTimeCode varchar(20)
-                //  ,@ProblemCode varchar(20))
+                //  อ่านค่าจาก Store pProcessSearchYieldLessThanCriteria
+                //  pProcessSearchMachineDownTimeEndJob
                 SqlParameterCollection param = new SqlCommand().Parameters;
-                param.AddWithValue("@MachineNo", SqlDbType.VarChar).Value = MachineNo;
-                param.AddWithValue("@EventDateTime", SqlDbType.DateTime).Value = EventDateTime;
-                param.AddWithValue("@Status", SqlDbType.VarChar).Value = Status;
-                param.AddWithValue("@DownTimeCode", SqlDbType.VarChar).Value = DownTimeCode;
-                param.AddWithValue("@ProblemCode", SqlDbType.VarChar).Value = ProblemCode;
-                ds = new DBClass().SqlExcSto("pInsert_Table_StatusMachine", "DbSet", param);
+                ds = new DBClass().SqlExcSto("pProcessSearchYieldLessThanCriteria", "DbSet", param);
                 dataTable = ds.Tables[0];
             }
             catch (SqlException e)
             {
                 dataTable = null;
-                log.Error("pInsert_Table_StatusMachine SqlException : " + e.Message);
+                log.Error("pProcessSearchYieldLessThanCriteria SqlException : " + e.Message);
             }
             catch (Exception ex)
             {
                 dataTable = null;
-                log.Error("pInsert_Table_StatusMachine Exception : " + ex.Message);
+                log.Error("pProcessSearchYieldLessThanCriteria Exception : " + ex.Message);
             }
             return dataTable;
         }
-
-        //  PLC function
-        private static void PlcMainLoop(PoohFinsETN plc)
+        private static DataTable pProcessUpdateYieldActiveLineGroup(int Table_YieldMonitoring_id)
         {
-            PlcMachineDownTimeLoop(plc);
-        }
-        private static void PlcMachineDownTimeLoop(PoohFinsETN plc)
-        {
+            DataTable dataTable = new DataTable();
+            DataSet ds = new DataSet();
             try
             {
-                //  Machine status
-                if (PlcReadEM2(plc, 30000) == 1)  //  3. NJ have data
-                {
-                    //  Read data (E2_0 - E2_99)
-                    string E2_DATA = string.Empty;
-                    System.Threading.Thread.Sleep(_plcDelayMs);
-                    E2_DATA = PlcReadMemoryString(plc, 0, 99);
-
-                    //  Check E2_DATA
-                    if (string.IsNullOrEmpty(E2_DATA)) return;
-
-                    //  Load data to var
-                    string[] data = new string[5];
-                    data[0] = E2_DATA.Substring(0, 9).Replace("\n", "");                         //  MachineNo
-                    data[1] = E2_DATA.Substring(10, 19).Replace("\n", "");                      //  EventDateTime
-                    data[2] = E2_DATA.Substring(20, 29).Replace("\n", "");                      //  Status
-                    data[3] = E2_DATA.Substring(30, 39).Replace("\n", "");                      //  DownTimeCode
-                    data[4] = E2_DATA.Substring(40, E2_DATA.Length - 1).Replace("\n", "");      //  ProblemCode
-
-                    //  4.PC got data >> finish (E2_300010= 1)
-                    pInsert_Table_StatusMachine(data[0], Convert.ToDateTime(data[1]), data[2], data[3], data[4]);
-                    PlcWriteEM2(plc, 30010, 1);
-                    System.Threading.Thread.Sleep(_plcDelayMs);
-
-                    //  5. NJ Ack.
-                    while (true)
-                    {
-                        if (PlcReadEM2(plc, 30000) == 2)
-                        {
-                            //  6. PC Ack.
-                            System.Threading.Thread.Sleep(_plcDelayMs);
-                            PlcWriteEM2(plc, 30010, 1);
-                            break;
-                        }
-                        else
-                            System.Threading.Thread.Sleep(_plcDelayMs);
-                    }
-
-                    //  7. NJ clear data and flag
-                    while (true)
-                    {
-                        if (PlcReadEM2(plc, 30000) == 0)
-                        {
-                            // 8.PC clear data and flag
-                            System.Threading.Thread.Sleep(_plcDelayMs);
-                            PlcWriteEM2(plc, 30010, 0);
-                            break;
-                        }
-                        else
-                            System.Threading.Thread.Sleep(_plcDelayMs);
-                    }
-                }
+                //  อ่านค่าจาก Store pProcessUpdateYieldActiveLineGroup
+                //  [dbo].[pProcessUpdateYieldActiveLineGroup](@Table_YieldMonitoring_id int)
+                SqlParameterCollection param = new SqlCommand().Parameters;
+                param.AddWithValue("@Table_YieldMonitoring_id", SqlDbType.Int).Value = Table_YieldMonitoring_id;
+                ds = new DBClass().SqlExcSto("pProcessUpdateYieldActiveLineGroup", "DbSet", param);
+                dataTable = ds.Tables[0];
+            }
+            catch (SqlException e)
+            {
+                dataTable = null;
+                log.Error("pProcessUpdateYieldActiveLineGroup SqlException : " + e.Message);
             }
             catch (Exception ex)
             {
-                log.Error("PlcMachineDownTimeLoop : " + ex.Message);
+                dataTable = null;
+                log.Error("pProcessUpdateYieldActiveLineGroup Exception : " + ex.Message);
             }
+            return dataTable;
         }
-        private static void PlcSetup(PoohFinsETN plc, string plcIpAddr, byte plcNetNo, byte pcNetNo, byte pcNodeNo, int timeout)
+        private static DataTable pProcessSearchMachineDownTimeOverMinute_NonSelectCase()
         {
+            DataTable dataTable = new DataTable();
+            DataSet ds = new DataSet();
             try
             {
-                //  ตรวจสอบหมายเลข IP ของ PLC
-                if (ValidateIPv4(plcIpAddr))
-                {
-                    plc.PLC_IPAddress = plcIpAddr;
-                    plc.PLC_NetNo = plcNetNo;
-                    plc.PLC_NodeNo = (byte)Int16.Parse(plcIpAddr.Split('.')[3]);
-                    plc.PLC_UDPPort = 9600;
-                    plc.PC_NetNo = pcNetNo;
-                    plc.PC_NodeNo = pcNodeNo;
-                    plc.TimeOutMSec = timeout;
-                }
+                //  อ่านค่าจาก Store pProcessSearchMachineDownTimeOverMinute_NonSelectCase
+                //  pProcessSearchMachineDownTimeOverMinute_NonSelectCase
+                SqlParameterCollection param = new SqlCommand().Parameters;
+                ds = new DBClass().SqlExcSto("pProcessSearchMachineDownTimeOverMinute_NonSelectCase", "DbSet", param);
+                dataTable = ds.Tables[0];
             }
-            catch (Exception e)
+            catch (SqlException e)
             {
-                Console.WriteLine(e.Message);
+                dataTable = null;
+                log.Error("pProcessSearchMachineDownTimeOverMinute_NonSelectCase SqlException : " + e.Message);
             }
+            catch (Exception ex)
+            {
+                dataTable = null;
+                log.Error("pProcessSearchMachineDownTimeOverMinute_NonSelectCase Exception : " + ex.Message);
+            }
+            return dataTable;
         }
-        private static void PlcWriteEM2(PoohFinsETN plc, Int16 addr, int value)
+        private static DataTable pProcessUpdateMachineDownActiveLineGroupEndJob_NonSelectCase(int Table_StatusMachine_id)
         {
+            DataTable dataTable = new DataTable();
+            DataSet ds = new DataSet();
             try
             {
-                PoohFinsETN.MemoryTypes mt = PoohFinsETN.MemoryTypes.EM2;
-                PoohFinsETN.DataTypes dt = PoohFinsETN.DataTypes.UnSignBIN;
-                plc.WriteMemoryWord(mt, addr, value, dt);
+                //  อ่านค่าจาก Store pProcessUpdateMachineDownActiveLineGroupEndJob_NonSelectCase
+                //  pProcessUpdateMachineDownActiveLineGroupEndJob_NonSelectCase(@Table_StatusMachine_id int)
+                SqlParameterCollection param = new SqlCommand().Parameters;
+                param.AddWithValue("@Table_StatusMachine_id", SqlDbType.Int).Value = Table_StatusMachine_id;
+                ds = new DBClass().SqlExcSto("pProcessUpdateMachineDownActiveLineGroupEndJob_NonSelectCase", "DbSet", param);
+                dataTable = ds.Tables[0];
             }
-            catch (Exception e)
+            catch (SqlException e)
             {
-                Console.WriteLine(e.Message);
+                dataTable = null;
+                log.Error("pProcessUpdateMachineDownActiveLineGroupEndJob_NonSelectCase SqlException : " + e.Message);
             }
+            catch (Exception ex)
+            {
+                dataTable = null;
+                log.Error("pProcessUpdateMachineDownActiveLineGroupEndJob_NonSelectCase Exception : " + ex.Message);
+            }
+            return dataTable;
         }
-        private static int PlcReadEM2(PoohFinsETN plc, Int16 addr)
+        private static DataTable pProcessSearchMachineDownTimeEndJob_B401()
         {
+            DataTable dataTable = new DataTable();
+            DataSet ds = new DataSet();
             try
             {
-                PoohFinsETN.MemoryTypes mt = PoohFinsETN.MemoryTypes.EM2;
-                PoohFinsETN.DataTypes dt = PoohFinsETN.DataTypes.UnSignBIN;
-                int res = plc.ReadMemoryWord(mt, addr, 1, dt)[0];
-                return res;
+                //  อ่านค่าจาก Store pProcessSearchMachineDownTimeEndJob_B401
+                //  pProcessSearchMachineDownTimeEndJob_B401
+                SqlParameterCollection param = new SqlCommand().Parameters;
+                ds = new DBClass().SqlExcSto("pProcessSearchMachineDownTimeEndJob_B401", "DbSet", param);
+                dataTable = ds.Tables[0];
             }
-            catch (Exception e)
+            catch (SqlException e)
             {
-                return -1;
+                dataTable = null;
+                log.Error("pProcessSearchMachineDownTimeEndJob_B401 SqlException : " + e.Message);
             }
+            catch (Exception ex)
+            {
+                dataTable = null;
+                log.Error("pProcessSearchMachineDownTimeEndJob_B401 Exception : " + ex.Message);
+            }
+            return dataTable;
         }
-        private static string PlcReadMemoryString(PoohFinsETN plc, Int16 addr, Int16 size)
+        private static DataTable pProcessSearchMachineDownTimeOverMinute_B201()
         {
+            DataTable dataTable = new DataTable();
+            DataSet ds = new DataSet();
             try
             {
-                PoohFinsETN.MemoryTypes mt = PoohFinsETN.MemoryTypes.EM2;
-                PoohFinsETN.DataTypes dt = PoohFinsETN.DataTypes.UnSignBIN;
-                string res = plc.ReadMemoryString(mt, addr, size);
-                return res;
+                //  อ่านค่าจาก Store pProcessSearchMachineDownTimeOverMinute_B201
+                //  pProcessSearchMachineDownTimeOverMinute_B201
+                SqlParameterCollection param = new SqlCommand().Parameters;
+                ds = new DBClass().SqlExcSto("pProcessSearchMachineDownTimeOverMinute_B201", "DbSet", param);
+                dataTable = ds.Tables[0];
             }
-            catch (Exception e)
+            catch (SqlException e)
             {
-                return null;
+                dataTable = null;
+                log.Error("pProcessSearchMachineDownTimeOverMinute_B201 SqlException : " + e.Message);
             }
+            catch (Exception ex)
+            {
+                dataTable = null;
+                log.Error("pProcessSearchMachineDownTimeOverMinute_B201 Exception : " + ex.Message);
+            }
+            return dataTable;
         }
-
+        private static DataTable pProcessUpdateMachineDownActiveLineGroup_B201(int Table_StatusMachine_id)
+        {
+            DataTable dataTable = new DataTable();
+            DataSet ds = new DataSet();
+            try
+            {
+                //  อ่านค่าจาก Store pProcessUpdateMachineDownActiveLineGroup_B201
+                //  pProcessUpdateMachineDownActiveLineGroup_B201(@Table_StatusMachine_id int)
+                SqlParameterCollection param = new SqlCommand().Parameters;
+                param.AddWithValue("@Table_StatusMachine_id", SqlDbType.Int).Value = Table_StatusMachine_id;
+                ds = new DBClass().SqlExcSto("pProcessUpdateMachineDownActiveLineGroup_B201", "DbSet", param);
+                dataTable = ds.Tables[0];
+            }
+            catch (SqlException e)
+            {
+                dataTable = null;
+                log.Error("pProcessUpdateMachineDownActiveLineGroup_B201 SqlException : " + e.Message);
+            }
+            catch (Exception ex)
+            {
+                dataTable = null;
+                log.Error("pProcessUpdateMachineDownActiveLineGroup_B201 Exception : " + ex.Message);
+            }
+            return dataTable;
+        }
+        private static DataTable pProcessSearchMachineDownTimeEndJob_B201()
+        {
+            DataTable dataTable = new DataTable();
+            DataSet ds = new DataSet();
+            try
+            {
+                //  อ่านค่าจาก Store pProcessSearchMachineDownTimeEndJob_B201
+                //  pProcessSearchMachineDownTimeEndJob_B201
+                SqlParameterCollection param = new SqlCommand().Parameters;
+                ds = new DBClass().SqlExcSto("pProcessSearchMachineDownTimeEndJob_B201", "DbSet", param);
+                dataTable = ds.Tables[0];
+            }
+            catch (SqlException e)
+            {
+                dataTable = null;
+                log.Error("pProcessSearchMachineDownTimeEndJob_B201 SqlException : " + e.Message);
+            }
+            catch (Exception ex)
+            {
+                dataTable = null;
+                log.Error("pProcessSearchMachineDownTimeEndJob_B201 Exception : " + ex.Message);
+            }
+            return dataTable;
+        }
+        private static DataTable pProcessSearchCountStatistic(string Table_MasterLineMachineDown_code)
+        {
+            DataTable dataTable = new DataTable();
+            DataSet ds = new DataSet();
+            try
+            {
+                //  อ่านค่าจาก Store pProcessSearchCountStatistic
+                //  pProcessSearchCountStatistic (@Table_MasterLineMachineDown_code varchar(10))
+                SqlParameterCollection param = new SqlCommand().Parameters;
+                param.AddWithValue("@Table_MasterLineMachineDown_code", SqlDbType.VarChar).Value = Table_MasterLineMachineDown_code;
+                ds = new DBClass().SqlExcSto("pProcessSearchCountStatistic", "DbSet", param);
+                dataTable = ds.Tables[0];
+            }
+            catch (SqlException e)
+            {
+                dataTable = null;
+                log.Error("pProcessSearchCountStatistic SqlException : " + e.Message);
+            }
+            catch (Exception ex)
+            {
+                dataTable = null;
+                log.Error("pProcessSearchCountStatistic Exception : " + ex.Message);
+            }
+            return dataTable;
+        }
+        private static DataTable pProcessUpdateCountStatistic(string Table_MasterLineMachineDown_code)
+        {
+            DataTable dataTable = new DataTable();
+            DataSet ds = new DataSet();
+            try
+            {
+                //  อ่านค่าจาก Store pProcessSearchCountStatistic
+                //  pProcessSearchCountStatistic (@Table_MasterLineMachineDown_code varchar(10))
+                SqlParameterCollection param = new SqlCommand().Parameters;
+                param.AddWithValue("@Table_MasterLineMachineDown_code", SqlDbType.VarChar).Value = Table_MasterLineMachineDown_code;
+                ds = new DBClass().SqlExcSto("pProcessUpdateCountStatistic", "DbSet", param);
+                dataTable = ds.Tables[0];
+            }
+            catch (SqlException e)
+            {
+                dataTable = null;
+                log.Error("pProcessUpdateCountStatistic SqlException : " + e.Message);
+            }
+            catch (Exception ex)
+            {
+                dataTable = null;
+                log.Error("pProcessUpdateCountStatistic Exception : " + ex.Message);
+            }
+            return dataTable;
+        }
     }
 }
