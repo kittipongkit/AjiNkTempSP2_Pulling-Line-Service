@@ -37,14 +37,26 @@ namespace Interface_NJ
             //  ตั้งค่า Interface ระหว่าง Service และ PLC ( **Recheck Net and Node number )
             PlcSetup(_Plc1, _plcIp1, 0, 0, 10, _plcTimeout);
 
-            //  Main loop
+            //  Main loop  
             while (true)
             {
-                //  PLC 1 Loop
+                //  PLC 1 Read Loop
                 PlcMainLoop(_Plc1);
 
+                //  PLC 1 Write Loop
+                int timeAccum = 0;
+                int mainLoopDelay = Convert.ToInt32(ConfigurationManager.AppSettings["delayLoop_ms"]);
+                int writeLoopDelay = Convert.ToInt32(ConfigurationManager.AppSettings["delayWriteLoop_ms"]);
+                while (timeAccum <= mainLoopDelay)
+                {
+                    //  PLC 1 Write Setting
+                    PlcMainWriteSettingLoop(_Plc1);
+                    timeAccum += writeLoopDelay;
+                    System.Threading.Thread.Sleep(writeLoopDelay);
+                }
+
                 //  Delay loop
-                System.Threading.Thread.Sleep(Convert.ToInt32(ConfigurationManager.AppSettings["delayLoop_ms"]));
+                //System.Threading.Thread.Sleep(Convert.ToInt32(ConfigurationManager.AppSettings["delayLoop_ms"]));
             }
         }
 
@@ -111,12 +123,38 @@ namespace Interface_NJ
             }
             return dataTable;
         }
+        private static DataTable pGet_plc_setting_addr()
+        {
+            DataTable dataTable = new DataTable();
+            DataSet ds = new DataSet();
+            try
+            {
+
+                //  อ่านค่าจาก Store pGet_plc_setting_addr 
+                SqlParameterCollection param = new SqlCommand().Parameters;
+                ds = new DBClass().SqlExcSto("pGet_plc_setting_addr", "DbSet", param);
+                dataTable = new DataTable();
+                dataTable = ds.Tables[0];
+            }
+            catch (SqlException e)
+            {
+                dataTable = null;
+                log.Error("pGet_plc_setting_addr SqlException : " + e.Message);
+            }
+            catch (Exception ex)
+            {
+                dataTable = null;
+                log.Error("pGet_plc_setting_addr Exception : " + ex.Message);
+            }
+            return dataTable;
+        }
 
         //  PLC function
         private static void PlcMainLoop(PoohFinsETN plc)
         {
-            float[] t1 = PlcReadDM( plc, 500, 20);
+            float[] t1 = PlcReadDM(plc, 500, 20);
             System.Threading.Thread.Sleep(_plcDelayMs);
+            Console.WriteLine("----" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "----");
             Console.WriteLine("T#1 : " + t1[0] + "'C    H#1 : " + t1[1] + " %");
             Console.WriteLine("T#2 : " + t1[2] + "'C    H#2 : " + t1[3] + " %");
             Console.WriteLine("T#3 : " + t1[4] + "'C    H#3 : " + t1[5] + " %");
@@ -130,37 +168,61 @@ namespace Interface_NJ
             //long h1 = PlcReadMemoryDWord(plc, 518, 2)[0];
             //System.Threading.Thread.Sleep(_plcDelayMs);
             //Console.WriteLine("h1 : " + h1);
-            Console.WriteLine("---------------");
+            //Console.WriteLine("------------------------------");
 
             //System.Threading.Thread.Sleep(_plcDelayMs);
 
-            pInsert_tr_temp(1, t1[0]);
-            pInsert_tr_temp(2, t1[1]);
-            pInsert_tr_temp(3, t1[2]);
-            pInsert_tr_temp(4, t1[3]);
-            pInsert_tr_temp(5, t1[4]);
-            pInsert_tr_temp(6, t1[5]);
-            pInsert_tr_temp(7, t1[6]);
-            pInsert_tr_temp(8, t1[7]);
+            pInsert_tr_temp(7, t1[0]);
+            pInsert_tr_temp(8, t1[1]);
+            pInsert_tr_temp(1, t1[2]);
+            pInsert_tr_temp(2, t1[3]);
+            pInsert_tr_temp(3, t1[4]);
+            pInsert_tr_temp(4, t1[5]);
+            pInsert_tr_temp(5, t1[6]);
+            pInsert_tr_temp(6, t1[7]);
             pInsert_tr_temp(9, t1[8]);
             pInsert_tr_temp(10, t1[9]);
         }
-        //private static void PlcMainLoop(PoohFinsETN plc)
-        //{
-        //    float t1 = PlcReadDM(plc, 516);
-        //    System.Threading.Thread.Sleep(_plcDelayMs);
-        //    Console.WriteLine("T#5 : " + t1);
+        private static void PlcMainWriteSettingLoop(PoohFinsETN plc)
+        {
+            try
+            {
+                //Console.WriteLine("Write Data to PLC 1");
+                DataTable dt = pGet_plc_setting_addr();
+                if (dt != null)
+                {
+                    //Console.WriteLine("Write Data to PLC 2");
+                    if (dt.Rows.Count > 0)
+                    {
+                        for (int i = 0; i < dt.Rows.Count; i++)
+                        {
+                            //  Reload data
+                            string temp_name = dt.Rows[i]["temp_name"].ToString();
+                            Int16 addr_hi = Int16.Parse(dt.Rows[i]["plc_addr_sp_hi"].ToString());
+                            Int16 addr_lo = Int16.Parse(dt.Rows[i]["plc_addr_sp_lo"].ToString());
+                            float[] limit_hi = { Convert.ToSingle(dt.Rows[i]["limit_hi"].ToString()) };
+                            float[] limit_low = { Convert.ToSingle(dt.Rows[i]["limit_low"].ToString()) };
 
-        //    float h1 = PlcReadDM(plc, 518);
-        //    System.Threading.Thread.Sleep(_plcDelayMs);
-        //    Console.WriteLine("H#5 : " + h1);
+                            //  Write HI
+                            PlcWriteMemoryFloat32(plc, addr_hi, limit_hi);
+                            System.Threading.Thread.Sleep(_plcDelayMs);
+                            // Console.WriteLine(temp_name + " HI Upload : " + limit_hi[0] + " at D" + addr_hi.ToString());
 
-        //    //long h1 = PlcReadMemoryDWord(plc, 518, 2)[0];
-        //    //System.Threading.Thread.Sleep(_plcDelayMs);
-        //    //Console.WriteLine("h1 : " + h1);
-        //    Console.WriteLine("---------------");
-        //}
-            private static void PlcSetup(PoohFinsETN plc, string plcIpAddr, byte plcNetNo, byte pcNetNo, byte pcNodeNo, int timeout)
+                            //  Write LO
+                            PlcWriteMemoryFloat32(plc, addr_lo, limit_low);
+                            System.Threading.Thread.Sleep(_plcDelayMs);
+                            // Console.WriteLine(temp_name + " LO Upload : " + limit_low[0] + " at D" + addr_lo.ToString());
+
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(GetDatetimeNowConsole() + e.Message);
+            }
+        }
+        private static void PlcSetup(PoohFinsETN plc, string plcIpAddr, byte plcNetNo, byte pcNetNo, byte pcNodeNo, int timeout)
         {
             try
             {
@@ -181,22 +243,6 @@ namespace Interface_NJ
                 Console.WriteLine(GetDatetimeNowConsole() + e.Message);
             }
         }
-        //private static float PlcReadDM(PoohFinsETN plc, Int16 addr)
-        //{
-        //    try
-        //    {
-        //        PoohFinsETN.MemoryTypes mt = PoohFinsETN.MemoryTypes.DM;
-        //        PoohFinsETN.DataTypes dt = PoohFinsETN.DataTypes.UnSignBIN;
-        //        //int res = plc.ReadMemoryWord(mt, addr, 1, dt)[0];
-        //        float res = plc.ReadMemoryFloat32(mt, addr, 1)[0];
-        //        return res;
-        //    }
-        //    catch (Exception e)
-        //    {
-        //        Console.WriteLine(GetDatetimeNowConsole() + e.Message);
-        //        return -1;
-        //    }
-        //}
         private static float[] PlcReadDM(PoohFinsETN plc, Int16 addr, Int16 size)
         {
             try
@@ -241,6 +287,18 @@ namespace Interface_NJ
             {
                 Console.WriteLine(GetDatetimeNowConsole() + e.Message);
                 return null;
+            }
+        }
+        private static void PlcWriteMemoryFloat32(PoohFinsETN plc, Int16 addr, float[] writeDataFloat)
+        {
+            try
+            {
+                PoohFinsETN.MemoryTypes mt = PoohFinsETN.MemoryTypes.DM;
+                plc.WriteMemoryFloat32(mt, addr, writeDataFloat);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(GetDatetimeNowConsole() + e.Message);
             }
         }
     }
